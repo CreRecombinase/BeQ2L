@@ -2,10 +2,14 @@
 #define MATMETHODS_HPP
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/uniform_int_distribution.hpp>
+#include <boost/timer/timer.hpp>
 #include "armadillo"
 
 using namespace arma;
 using namespace std;
+using boost::timer::cpu_timer;
+using boost::timer::cpu_times;
+using boost::timer::nanosecond_type;
 
 
 umat GenBoot (size_t colsize, size_t bootstrapnumber){
@@ -22,24 +26,51 @@ umat GenBoot (size_t colsize, size_t bootstrapnumber){
 }
 
 void doBoot(mat &A, mat &B,cube &C,umat &BootMat, mat &Summaries){
- 
+  cpu_timer timerInd;
+  timerInd.stop()
+  cpu_timer timerCor;
+
+  timerCor.stop();
+  cpu_timer timerMedian;
+  timerMedian.stop();
+  
   if(A.n_rows!=BootMat.n_cols){
-    for(int i=0; i<C.n_slices; ++i){
+
+    for(int i=1; i<C.n_slices; ++i){
       cout<<"Boot(incorrect indices): "<<i<<endl;
+
       C.slice(i) = cor(A.rows(BootMat(i,span(0,A.n_rows))),B.rows(BootMat(i,span(0,B.n_rows))));
     }
   }
   else{
+    
+    timerInd.resume();
+    mat tA = A.rows(BootMat.row(0));
+    mat tB = B.rows(BootMat.row(0));
+    timerInd.stop();
+
+    timerCor.resume()
+    C.slice(0) = cor(tA,tB);
+    timerCor.stop();
     for(int i=0; i<C.n_slices; ++i){
       cout<<"Boot: "<<i<<endl;
-      C.slice(i) = cor(A.rows(BootMat.row(i)),B.rows(BootMat.row(i)));
+      timerInd.resume();
+      tA = A.rows(BootMat.row(i));
+      tB = B.rows(BootMat.row(i));
+      timerInd.stop();
+      timerCor.resume();
+      C.slice(i) = cor(tA,tB);
+      timerCor.stop();
     }
   }
+  timerMedian.resume();
   mat S = mat(C.n_rows,C.n_slices);
   for(int i=0; i< C.n_cols; i++){
     S = C(span::all,span(i,i),span::all);
     Summaries.col(i)=median(S,1);
   }
+  timerMedian.stop();
+  
 }
 
 uvec trainindex(const size_t totalsize,const int ksize,const int k){
