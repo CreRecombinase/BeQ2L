@@ -70,6 +70,9 @@ void doBoot(mat &A, mat &B,cube &C,umat &BootMat, mat &Summaries){
     Summaries.col(i)=median(S,1);
   }
   timerMedian.stop();
+  timerInd.report();
+  timerCor.report();
+  timerMedian.report();
   
 }
 
