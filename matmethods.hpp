@@ -23,7 +23,7 @@ umat GenBoot (size_t colsize, size_t bootstrapnumber){
   return(samplemat);
 }
 
-void doBoot(mat &A, mat &B,cube &C,umat &BootMat, mat &Summaries){
+void doBoot(mat &A, mat &B,cube &C,umat &BootMat, cube &Summaries){
   auto_cpu_timer timerInd;
   timerInd.stop();
   auto_cpu_timer timerCor;
@@ -148,7 +148,6 @@ void KfoldCV (const mat &A,const mat &B, const int kfold, const int chunknum, co
   for(int i=0; i<bootSumRMSE.size(); i++){
     bootSumRMSE[i]=RMSE(Summaries.slice(i),TrueCor);
   }
-  double bootSumRMSE = RMSE(Summaries,TrueCor);
   for(int i=1; i<kfoldIterations; i++){
     cout<<"Starting kfold: "<<i<<endl;
     testi = testindex(A.n_rows,iter_k,0);
@@ -167,7 +166,7 @@ void KfoldCV (const mat &A,const mat &B, const int kfold, const int chunknum, co
   }
   pointSumRMSE = pointSumRMSE/kfoldIterations;
   for(int j=0; j<bootSumRMSE.size(); j++){ 
-    bootSumRMSE[i] = bootSumRMSE[i]/kfoldIterations;
+    bootSumRMSE[j] = bootSumRMSE[j]/kfoldIterations;
   }
   
   ofstream outputfile;
