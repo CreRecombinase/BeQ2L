@@ -7,9 +7,7 @@
 
 using namespace arma;
 using namespace std;
-using boost::timer::cpu_timer;
-using boost::timer::cpu_times;
-using boost::timer::nanosecond_type;
+using boost::timer::auto_cpu_timer;
 
 
 umat GenBoot (size_t colsize, size_t bootstrapnumber){
@@ -26,12 +24,12 @@ umat GenBoot (size_t colsize, size_t bootstrapnumber){
 }
 
 void doBoot(mat &A, mat &B,cube &C,umat &BootMat, mat &Summaries){
-  cpu_timer timerInd;
+  auto_cpu_timer timerInd;
   timerInd.stop();
-  cpu_timer timerCor;
+  auto_cpu_timer timerCor;
 
   timerCor.stop();
-  cpu_timer timerMedian;
+  auto_cpu_timer timerMedian;
   timerMedian.stop();
   
   if(A.n_rows!=BootMat.n_cols){
@@ -49,7 +47,7 @@ void doBoot(mat &A, mat &B,cube &C,umat &BootMat, mat &Summaries){
     mat tB = B.rows(BootMat.row(0));
     timerInd.stop();
 
-    timerCor.resume()
+    timerCor.resume();
     C.slice(0) = cor(tA,tB);
     timerCor.stop();
     for(int i=0; i<C.n_slices; ++i){
@@ -70,9 +68,9 @@ void doBoot(mat &A, mat &B,cube &C,umat &BootMat, mat &Summaries){
     Summaries.col(i)=median(S,1);
   }
   timerMedian.stop();
-  //timerInd.report();
-  //timerCor.report();
-  //timerMedian.report();
+  timerInd.report();
+  timerCor.report();
+  timerMedian.report();
   
 }
 
@@ -104,7 +102,7 @@ uvec testindex(const size_t totalsize,const  int ksize,const  int k){
 double RMSE(mat &Est, const mat &True){
   Est = sqrt(pow((Est-True),2));
   Est.elem(find_nonfinite(Est)).zeros();
-  return(sum(sum(Est)));
+  return(mean(mean(Est)));
 }
     
   
