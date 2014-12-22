@@ -33,24 +33,20 @@ void doBoot(mat &A, mat &B,cube &C,umat &BootMat, mat &Summaries){
   timerMedian.stop();
   
   if(A.n_rows!=BootMat.n_cols){
-
     for(int i=1; i<C.n_slices; ++i){
       cout<<"Boot(incorrect indices): "<<i<<endl;
-
       C.slice(i) = cor(A.rows(BootMat(i,span(0,A.n_rows))),B.rows(BootMat(i,span(0,B.n_rows))));
     }
   }
   else{
-    
     timerInd.resume();
     mat tA = A.rows(BootMat.row(0));
     mat tB = B.rows(BootMat.row(0));
     timerInd.stop();
-
     timerCor.resume();
     C.slice(0) = cor(tA,tB);
     timerCor.stop();
-    for(int i=0; i<C.n_slices; ++i){
+    for(int i=1; i<C.n_slices; ++i){
       cout<<"Boot: "<<i<<endl;
       timerInd.resume();
       tA = A.rows(BootMat.row(i));
@@ -62,10 +58,12 @@ void doBoot(mat &A, mat &B,cube &C,umat &BootMat, mat &Summaries){
     }
   }
   timerMedian.resume();
-  mat S = mat(C.n_rows,C.n_slices);
-  for(int i=0; i< C.n_cols; i++){
-    S = C(span::all,span(i,i),span::all);
-    Summaries.col(i)=median(S,1);
+  for(int i=0; i<C.n_slices; i++){
+    mat S = mat(C.n_rows,C.n_slices);
+    for(int j=0; j< C.n_cols; j++){
+      S = C(span::all,span(i,i),span(0,i));
+      Summaries.slice(i).col(j)=median(S,1);
+    }
   }
   timerMedian.stop();
   timerInd.report();
@@ -139,13 +137,17 @@ void KfoldCV (const mat &A,const mat &B, const int kfold, const int chunknum, co
   }
   cout<<"Initiating variables and starting kfold: 0"<<endl;
   mat Point(A.n_cols,B.n_cols);
-  mat Summaries(A.n_cols,B.n_cols);
+  cube Summaries(A.n_cols,B.n_cols,bsi);
   umat BootMat = GenBoot(trainA.n_rows,bsi);
   cube C(A.n_cols,B.n_cols,bsi);
   doBoot(trainA,trainB,C,BootMat,Summaries);
   Point = cor(trainA,trainB);
   mat TrueCor = cor(testA,testB);
   double pointSumRMSE = RMSE(Point,TrueCor);
+  vector<double> bootSumRMSE(bsi);
+  for(int i=0; i<bootSumRMSE.size(); i++){
+    bootSumRMSE[i]=RMSE(Summaries.slice(i),TrueCor);
+  }
   double bootSumRMSE = RMSE(Summaries,TrueCor);
   for(int i=1; i<kfoldIterations; i++){
     cout<<"Starting kfold: "<<i<<endl;
@@ -159,18 +161,24 @@ void KfoldCV (const mat &A,const mat &B, const int kfold, const int chunknum, co
     Point = cor(trainA,trainB);
     TrueCor = cor(testA,testB);
     pointSumRMSE += RMSE(Point,TrueCor);
-    bootSumRMSE += RMSE(Summaries,TrueCor);
+    for(int j=0; j<bootSumRMSE.size(); j++){
+      bootSumRMSE[i] += RMSE(Summaries.slice(j),TrueCor);
+    }
   }
   pointSumRMSE = pointSumRMSE/kfoldIterations;
-  bootSumRMSE = bootSumRMSE/kfoldIterations;
-
+  for(int j=0; j<bootSumRMSE.size(); j++){ 
+    bootSumRMSE[i] = bootSumRMSE[i]/kfoldIterations;
+  }
+  
   ofstream outputfile;
   outputfile.open(file,std::ofstream::out|std::ofstream::app);
   
   if(chunknum==0){
     outputfile<<"Chunk\tSize\tbsi\tPointSumRMSE\tBootSumRMSE"<<endl;
   }
-  outputfile<<chunknum<<"\t"<<Point.n_elem<<"\t"<<bsi<<"\t"<<pointSumRMSE<<"\t"<<bootSumRMSE<<endl;
+  for(int j=0; j<bootSumRMSE.size(); j++){
+    outputfile<<chunknum<<"\t"<<Point.n_elem<<"\t"<<j+1<<"\t"<<pointSumRMSE<<"\t"<<bootSumRMSE[i]<<endl;
+  }
   outputfile.close();
 }
     
