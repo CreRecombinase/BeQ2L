@@ -50,11 +50,15 @@ int main(int argc, char* argv[]){
   sizevec = getdims(file,Bmatfield);
   totalBchunks = ceil((double) sizevec[0]/(double) Bchunksize);
   totalchunks = totalAchunks*totalBchunks;
+  cout<<"Total Chunks="<<totalchunks<<endl;
   
   mat A(sizevec[1],Achunksize);
   mat B(sizevec[1],Bchunksize);
   
   for( int i=0; i<chunknum; i++){
+    if(i>=totalchunks){
+      return(0);
+    }
     int Achunk = i/totalBchunks;
     int Bchunk = i%totalBchunks;
 
