@@ -2,12 +2,33 @@
 #define MATMETHODS_HPP
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/uniform_int_distribution.hpp>
+#include <algorithm>
 #include "armadillo"
 
 using namespace arma;
 using namespace std;
 
 
+
+double RMSE(const mat &Est, const mat &TrueA, const mat &TrueB){
+  uvec zeros;
+  double res;
+  mat Aimp = Est*TrueB.t();
+  vec  rsq(TrueA.n_rows);
+  for(int i=0; i<TrueA.n_rows; i++){
+    rsq(i)=as_scalar(cor(Aimp.row(i),TrueA.col(i)));
+  }
+  zeros =  find_nonfinite(rsq);
+  rsq.elem(find_nonfinite(rsq)).zeros();
+  rsq = square(rsq);
+  if(zeros.n_elem!=rsq.n_elem){
+    res = sum(rsq)/(rsq.n_elem-zeros.n_elem);
+  }
+  else{
+    res = 0;
+  }
+  return(res);
+}
 
 umat GenBoot (size_t colsize, size_t bootstrapnumber){
   boost::random::mt19937 rng;
@@ -26,75 +47,78 @@ mat BootstrapSample(mat &A,umat &Bootmat,int i){
   return(A.rows(Bootmat.row(i)));
 }
 
-void CumMeanBoot(mat &A, mat &B,mat &C,umat &BootMat, mat &means, mat &vars,int bsi){
 
 
+double CumMeanBoot(mat &A, mat &B,mat &C,umat &BootMat,int bsi,mat &TrueA,mat &TrueB){
+
+  double res;
   running_stat_vec<vec> stats;
-
-
-  
+  mat means(A.n_cols,B.n_cols);
   if(A.n_rows!=BootMat.n_cols){
     cerr<<"Boot(incorrect indices):  A.n_rows= "<<A.n_rows<<" BM.n_cols= "<<BootMat.n_cols<<endl;
     throw 15;
   }
-  else{
-
-    //First iteration of bootstrap
-    mat tA = BootstrapSample(A,BootMat,0);
-    mat tB = BootstrapSample(B,BootMat,0);
+  
+  cerr<<"Starting Bootstrap:"<<endl;
+  //First iteration of bootstrap
+  mat tA = BootstrapSample(A,BootMat,0);
+  mat tB = BootstrapSample(B,BootMat,0);
+  
+  vec Bv = var(tB,1,0);
+  C = cov(tA,tB);
+  C.each_row() /= Bv;
+  C.cols(find(Bv==0)).zeros();
+  uvec stillbad = find_nonfinite(C);
+  if(stillbad.n_elem>0){
+    cerr<<"Error with Logic(Boot0):"<<stillbad.n_elem<<endl;
+    uvec badb = find(Bv==0);
+    cerr<<Bv.n_elem<<endl;
+    cerr<<C.n_cols<<"x"<<C.n_rows<<endl;
+    cerr<<badb.n_elem<<endl;
+    throw 12;
     
-    C = cor(tA,tB);
-    stats(vectorise(C));
-    
-    for(int i=1; i<bsi; ++i){
-      //      cout<<"Boot: "<<i<<endl;
+  }
+  stats(vectorise(C));
+  
+  for(int i=1; i<bsi; ++i){
+    //      cout<<"Boot: "<<i<<endl;
+    try{
       tA = BootstrapSample(A,BootMat,i);
       tB = BootstrapSample(B,BootMat,i);
-      C = cor(tA,tB);
-      stats(vectorise(C));
     }
+    catch(...){
+      cerr<<"Can't create bootstraps!"<<endl;
+      throw 2;
+    }
+    try{
+      Bv = var(tB,1,0);
+      C = cov(tA,tB);
+      C.each_row()/=Bv;
+      C.cols(find(Bv==0)).zeros();
+      stillbad = find_nonfinite(C);
+      if(stillbad.n_elem>0){
+	cerr<<"Error with Logic(Boot1):"<<stillbad.n_elem<<endl;
+	uvec badb = find(Bv==0);
+	cerr<<Bv<<endl;
+	cerr<<badb.n_elem<<endl;
+	throw 11;
+      }
+    }
+    catch(...){
+      cerr<<"Error computing correlation"<<endl;
+      throw 3;
+    }
+    
+    
   }
-
-  means = stats.mean();
+  
+  cerr<<"Bootstrap finished"<<endl;
+  stats(vectorise(C));
+  means = stats.mean();	
   means.reshape(C.n_rows,C.n_cols);
-  vars = stats.var();
-  vars.reshape(C.n_rows,C.n_cols);
- 
-}
+  res = RMSE(means,TrueA,TrueB);
   
-
-void doBoot(mat &A, mat &B,cube &C,umat &BootMat, cube &Summaries){
-  
-  if(A.n_rows!=BootMat.n_cols){
-    for(int i=1; i<C.n_slices; ++i){
-      cerr<<"Boot(incorrect indices): "<<i<<endl;
-      throw 15;
-      //      C.slice(i) = cor(A.rows(BootMat(i,span(0,A.n_rows))),B.rows(BootMat(i,span(0,B.n_rows))));
-    }
-  }
-  else{
-
-    //First iteration of bootstrap
-    mat tA = BootstrapSample(A,BootMat,0);
-    mat tB = BootstrapSample(B,BootMat,0);
-
-    C.slice(0) = cor(tA,tB);
-
-    for(int i=1; i<C.n_slices; ++i){
-      cout<<"Boot: "<<i<<endl;
-      tA = BootstrapSample(A,BootMat,i);
-      tB = BootstrapSample(B,BootMat,i);
-      C.slice(i) = cor(tA,tB);
-    }
-  }
-
-  for(int i=0; i<C.n_slices; i++){
-    mat S = mat(C.n_rows,C.n_slices);
-    for(int j=0; j< C.n_cols; j++){
-      S = C(span::all,span(i,i),span(0,i));
-      Summaries.slice(i).col(j)=median(S,1);
-    }
-  }
+  return(res);
 }
 
 uvec trainindex(const size_t totalsize,const int ksize,const int k){
@@ -112,7 +136,6 @@ uvec trainindex(const size_t totalsize,const int ksize,const int k){
   return(returnvec);
 }
   
-
 uvec testindex(const size_t totalsize,const  int ksize,const  int k){
   uvec returnvec(ksize);
   int j=-1;
@@ -129,28 +152,17 @@ uvec testindex(const size_t totalsize,const  int ksize,const  int k){
   return(returnvec);
 }
 
-double RMSE(mat &Est, const mat &True){
-  Est = sqrt(pow((Est-True),2));
-  Est.elem(find_nonfinite(Est)).zeros();
-  return(mean(mean(Est)));
-}
-    
-  
-
-
 
 void KfoldCV (const mat &A,const mat &B, const int kfold, const int chunknum, const int bsi,const string file){
 
   mat testA,testB,trainA,trainB;
-  int kfoldIterations = (int) floor((double)A.n_rows/(double)kfold);
+  int kfoldIterations = kfold;
+  int iter_k = (int) floor((double)A.n_rows/(double)kfold);
   if(kfoldIterations<1){
     cerr<<"Must have at least one iteration of cross-validation, not "<<kfoldIterations<<endl;
     throw 12;
   }
   
-  int iter_k = kfold;
-
-
   cout<<"Begin "<<iter_k<<"-fold cross validation. There are "<<A.n_rows<<" samples"<<endl;
   uvec testi = testindex(A.n_rows,iter_k,0);
   uvec traini = trainindex(A.n_rows,iter_k,0);
@@ -167,18 +179,29 @@ void KfoldCV (const mat &A,const mat &B, const int kfold, const int chunknum, co
     cerr<<"Testing: "<<testi<<endl;
     throw 4;
   }
-  cout<<"Initiating variables and starting kfold: 0"<<endl;
+  cout<<"Initiating variables."<<endl;
   mat Point(A.n_cols,B.n_cols);
-  mat means(A.n_cols,B.n_cols);
-  mat vars(A.n_cols,B.n_cols);
   mat C(A.n_cols,B.n_cols);
-  
+
   umat BootMat = GenBoot(trainA.n_rows,bsi);
-  CumMeanBoot(trainA,trainB,C,BootMat,means,vars,bsi);
-  Point = cor(trainA,trainB);
-  mat TrueCor = cor(testA,testB);
-  double pointSumRMSE = RMSE(Point,TrueCor);
-  double bootSumRMSE = RMSE(means,TrueCor);
+  cout<<"Starting kfold: 0"<<endl;
+  double Rsq = CumMeanBoot(trainA,trainB,C,BootMat,bsi,testA,testB);
+
+ 
+  Point = cov(trainA,trainB);
+  vec Bv = var(trainB,1,0);
+  Point.each_row()/=Bv;
+  Point.cols(find(Bv==0)).zeros();
+  uvec stillbad = find_nonfinite(Point);
+  if(stillbad.n_elem>0){
+    cerr<<"Logic error(Point0):"<<stillbad.n_elem<<endl;
+    uvec badb = find(Bv==0);
+    cerr<<Bv<<endl;
+    cerr<<badb.n_elem<<endl;
+    throw 15;
+  }
+  
+  double  pointSumRMSE = RMSE(Point,testA,testB);
   
   for(int i=1; i<kfoldIterations; i++){
     cout<<"Starting kfold: "<<i<<endl;
@@ -188,48 +211,38 @@ void KfoldCV (const mat &A,const mat &B, const int kfold, const int chunknum, co
     testB = B.rows(testi);
     trainA = A.rows(traini);
     trainB = B.rows(traini);
-    Point = cor(trainA,trainB);
-    CumMeanBoot(trainA,trainB,C,BootMat,means,vars,bsi);
-    TrueCor = cor(testA,testB);
-    pointSumRMSE += RMSE(Point,TrueCor);
-    bootSumRMSE += RMSE(means,TrueCor);
+    Bv = var(trainB,1,0);
+    Point = cov(trainA,trainB);
+    Point.each_row()/=Bv;
+    Point.cols(find(Bv==0)).zeros();
+    stillbad = find_nonfinite(C);
+    if(stillbad.n_elem>0){
+      cerr<<"Logic error(Point1):"<<stillbad.n_elem<<endl;
+      uvec badb = find(Bv==0);
+      cerr<<Bv<<endl;
+      cerr<<badb.n_elem<<endl;
+      throw 14;
+      
+    }
+    Rsq =Rsq+CumMeanBoot(trainA,trainB,C,BootMat,bsi,testA,testB);
+    pointSumRMSE += RMSE(Point,testA,testB);
   }
   pointSumRMSE = pointSumRMSE/kfoldIterations;
-  bootSumRMSE = bootSumRMSE/kfoldIterations;
+  Rsq /=kfoldIterations;
   
   ofstream outputfile;
   outputfile.open(file,std::ofstream::out|std::ofstream::app);
-  
+  outputfile.setf(ios::fixed,ios::floatfield);
+  outputfile.precision(10);  
   if(chunknum==0){
-    outputfile<<"Chunk\tSize\tbsi\tPointSumRMSE\tBootSumRMSE"<<endl;
+    outputfile<<"Chunk\tSize\tbsi\tPointMeanR2\tBootMeanR2"<<endl;
   }
-  outputfile<<chunknum<<"\t"<<Point.n_elem<<"\t"<<"\t"<<pointSumRMSE<<"\t"<<bootSumRMSE<<endl;
+  outputfile<<chunknum<<"\t"<<Point.n_elem<<"\t"<<bsi<<"\t"<<pointSumRMSE<<"\t"<<Rsq<<"\t"<<endl;
   
   outputfile.close();
 }
     
     
-    
-
-
-    
-    
-    
-    
-
-    
-  
-
-
-
-
-  
-  
-
-  
-
-
-//void ComputeQuantiles(const running_stat_vec<rowvec> &stats, const mat &Co, mat &Quant, const vector<double> quantiles){
   
 
   

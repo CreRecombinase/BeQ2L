@@ -1,5 +1,5 @@
-#ifndef H5OBJ_HPP
-#define H5OBJ_HPP
+#ifndef H5OBJCPP_HPP
+#define H5OBJCPP_HPP
 #include "armadillo"
 #include <stdlib.h>
 
@@ -15,7 +15,7 @@ using namespace H5;
 //Functions to facilitate the reading and writing of data to and from HDF5
 
   
-int readh5mat(H5File file,const H5std_string fieldname,size_t colchunk, size_t colchunksize, size_t rowchunk, size_t rowchunksize, Mat<double> &outmat){
+mat readh5mat(H5File file,const H5std_string fieldname,size_t colchunk, size_t colchunksize, size_t rowchunk, size_t rowchunksize){
   //This function takes an OPEN hdf5 file, a field name, a start column and start row, and the address of an already allocated armadillo matrix and reads to the matrix
 
   //Data is stored in row major order in HDF5, and column major order in Armadillo, so we have to store the column data as rows
@@ -32,7 +32,7 @@ int readh5mat(H5File file,const H5std_string fieldname,size_t colchunk, size_t c
   hsize_t offset_h5[2]={startcol,startrow}; //Our starting rows and columns in the HDF5 matrix
   hsize_t offset_out[2]={0,0};              //No offset in memory
   hsize_t dims_h5[2]={colnum,rownum};       //The HDF5 data is stored as columns and then rows
-  tempmat = outmat.memptr();                //The address of our matrix
+                //The address of our matrix
 
   try{
     DataSet dataset = file.openDataSet(fieldname);
@@ -41,17 +41,16 @@ int readh5mat(H5File file,const H5std_string fieldname,size_t colchunk, size_t c
     int changsize=0;
 
     if(colchunksize*colchunk+colchunksize>total_dims[0]){
-
       dims_out[1]=total_dims[0]-(colchunksize*colchunk);
       dims_h5[0]=total_dims[0]-(colchunksize*colchunk);
-      outmat.set_size(rowchunksize,dims_out[1]);
     }
     if(rowchunksize*rowchunk+rowchunksize>total_dims[1]){
 
       dims_out[0] = total_dims[1]-(rowchunksize*rowchunk);
       dims_h5[1] = total_dims[1]-(rowchunksize*rowchunk);
-      outmat.set_size(dims_out[0],colchunksize);
     }
+    mat outmat(dims_out[0],dims_out[1]);
+    tempmat = outmat.memptr();
     dataspace.selectHyperslab(H5S_SELECT_SET,dims_h5,offset_h5);  //Ask for HDF5 slab of size and offset we specified above
     
     DataSpace memspace(2,dims_out);                               
@@ -61,8 +60,8 @@ int readh5mat(H5File file,const H5std_string fieldname,size_t colchunk, size_t c
 
     dataspace.close();
     memspace.close();
-    dataset.close();   //Close everything up
-    
+    dataset.close(); //Close everything up
+    return(outmat);
   }
   catch(FileIException error)
     {
