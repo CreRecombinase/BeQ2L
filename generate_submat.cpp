@@ -6,6 +6,7 @@
 #include <string>
 #include <fstream>
 #include <unordered_map>
+#include <utility>
 #include <iterator>
 #include "H5Cpp.h"
 #include "h5objcpp.hpp"
@@ -40,41 +41,46 @@ int main(int argc, char* argv[]){
   outfile = H5File(h5outfile,H5F_ACC_TRUNC);
 
 
-
+  cout<<"Reading in genelist"<<endl;
   ifstream genefile(genefilename);
   vector<string> genelist;
   copy(istream_iterator<string>(genefile),
 	    istream_iterator<string>(),
 	    back_inserter(genelist));
-
+  cout<<"Sorting genelist"<<endl;
   sort(genelist.begin(),genelist.end());
-  
+
   vector <hsize_t> sizevec(2);
   sizevec = getdims(infile,Genefield);
   int rownum = sizevec[1];
 
   int Achunks = ceil((double) sizevec[0]/(double) chunksize);
-
-  
     
   vector<string> intergenes;
   mat intergenemat;
-
+  cout<<"Starting reading and subsetting of data"<<endl;
   for(int i=0; i<Achunks; i++){
+    cout<<"Reading genelist from h5file"<<endl;
     vector<string> filegenes = readcharhdf5(infile,Genelistfield,i,chunksize);
     unordered_map<string,int> geneindex;
+    pair<string,int> tp;
+    cout<<"Making index of genes"<<endl;
     for(int j = 0; j!=filegenes.size(); j++){
-      geneindex.insert(make_pair<string,int>(filegenes[j],j));
+      tp = make_pair(filegenes[j],j);
+      geneindex.insert(tp);
     }
-    
+    cout<<"Sorting genelist"<<endl;
     sort(filegenes.begin(),filegenes.end());
-    vector<string> intersectv(filegenes.begin()-filegenes.end());
-    vector<string>::iterator intsct = set_intersection(filegenes.begin(),filegenes.end(),genelist.begin(),genelist.end());
+    cout<<"Computing Intersect"<<endl;
+    vector<string> intersectv(filegenes.end()-filegenes.begin());
+    vector<string>::iterator intsct = set_intersection(filegenes.begin(),filegenes.end(),genelist.begin(),genelist.end(),intersectv.begin());
     intersectv.resize(intsct-intersectv.begin());
     uvec intersectIndices(intersectv.size());
+    cout<<"Generating index for intersect"<<endl;
     for(vector<string>::iterator it=intersectv.begin(); it !=intersectv.end(); ++it){
       intersectIndices[it-intersectv.begin()]=geneindex[*it];
     }
+    cout<<"Sorting index"<<endl;
     sort(intersectIndices.begin(),intersectIndices.end());
     
     if(intersectv.size()>0){
