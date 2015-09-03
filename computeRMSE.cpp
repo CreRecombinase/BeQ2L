@@ -12,6 +12,8 @@ int main(int argc, char* argv[]){
   int chunkstart, chunknum,Achunksize,Bchunksize;
   int totalAchunks,totalBchunks,totalchunks;
   int kfold,bsi;
+  mkl_set_num_threads(1);
+  int rownum;
   if(argc!=9){
     cerr<<"Usage:RMSE h5file chunkstart chunknum Achunksize Bchunksize bsi kfold outputfile"<<endl;
     cerr<<"argc: "<<argc<<endl;
@@ -44,6 +46,7 @@ int main(int argc, char* argv[]){
   
   vector <hsize_t> sizevec(2);
   sizevec = getdims(file,Amatfield);
+  rownum = sizevec[1];
 
   totalAchunks = ceil((double) sizevec[0]/(double) Achunksize);
 
@@ -52,20 +55,19 @@ int main(int argc, char* argv[]){
   totalchunks = totalAchunks*totalBchunks;
   cout<<"Total Chunks="<<totalchunks<<endl;
   
-  mat A(sizevec[1],Achunksize);
-  mat B(sizevec[1],Bchunksize);
+  int chunkstop = min(chunkstart+chunknum,totalchunks)+1;
   
-  for( int i=0; i<chunknum; i++){
+  for( int i=chunkstart; i<chunkstop; i++){
     if(i>=totalchunks){
       return(0);
     }
     int Achunk = i/totalBchunks;
     int Bchunk = i%totalBchunks;
 
-    readh5mat(file,Amatfield,Achunk,Achunksize,0,A.n_rows,A);
-    readh5mat(file,Bmatfield,Bchunk,Bchunksize,0,B.n_rows,B);
+    mat A=readh5mat(file,Amatfield,Achunk,Achunksize,0,rownum);
+    mat B=readh5mat(file,Bmatfield,Bchunk,Bchunksize,0,rownum);
     cout<<"Starting chunk: "<<i<<endl;
-    KfoldCV(A,B,kfold,i,bsi,outputfile);
+    KfoldCV(A,B,kfold,i,bsi,outputfile,10);
   }
   return(0);
 }

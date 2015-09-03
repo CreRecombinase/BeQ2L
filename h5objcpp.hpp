@@ -2,7 +2,9 @@
 #define H5OBJCPP_HPP
 #include "armadillo"
 #include <stdlib.h>
-
+#include <utility>
+#include <unordered_map>
+#include<iterator>
 #include <iostream>
 #include <vector>
 #include <string>
@@ -14,7 +16,72 @@ using namespace H5;
 
 //Functions to facilitate the reading and writing of data to and from HDF5
 
-  
+vector<string> readcharhdf5(H5File file,const H5std_string fieldname,size_t chunk, size_t chunksize){
+
+
+  hsize_t chunkstart = chunksize*chunk;
+
+  char ** temprownames;
+  temprownames = (char**) malloc(chunksize*sizeof(char*));
+  hsize_t dims_out[1]={chunksize};
+  hsize_t offset_h5[1]={chunkstart};
+  hsize_t offset_out[1]={0};
+  hsize_t dims_h5[1]={chunksize};
+  hsize_t total_dims[1];
+  hid_t rowset,rowspace,memspace;
+  hid_t fstrtype;
+  herr_t status;
+
+  try{
+    
+    // Exception::dontPrint();
+    StrType stringt(0,H5T_VARIABLE);
+    
+    DataSet dataset = file.openDataSet(fieldname);
+    DataSpace dataspace = dataset.getSpace();
+
+    dataspace.getSimpleExtentDims(total_dims,NULL);
+    cout<<chunksize*chunk<<"/"<<total_dims[0]<<endl;
+    if(chunksize*chunk+chunksize>total_dims[0]){
+      cout<<"Resizing namevec"<<endl;
+      dims_out[0]=total_dims[0]-(chunksize*chunk);
+      dims_h5[0]=total_dims[0]-(chunksize*chunk);
+    }
+    
+    dataspace.selectHyperslab(H5S_SELECT_SET,dims_h5,offset_h5);
+    DataSpace memspace(1,dims_h5,NULL);
+    memspace.selectHyperslab(H5S_SELECT_SET,dims_h5,offset_out);
+    dataset.read(temprownames,stringt,memspace,dataspace);
+  }
+  catch(FileIException error)
+    {
+      cerr<<"Error reading rownames: "<<fieldname<<endl;
+      error.printError();
+      throw(3);
+    }
+  catch (DataSetIException error)
+    {
+      cerr<<"Error reading rownames: "<<fieldname<<endl;
+      error.printError();
+      throw(3);
+
+    }
+  catch (DataSpaceIException error)
+    {
+      cerr<<"Error reading rownames: "<<fieldname<<endl;
+      error.printError();
+      throw(3);
+    }
+  vector<string> outputstring(temprownames,temprownames+dims_out[0]); 
+  free(temprownames);
+  if(outputstring[outputstring.size()-1].compare("")==0){
+    cout<<"Last element empty"<<endl;
+    cout<<outputstring[outputstring.size()-1]<<endl;
+    outputstring.pop_back();
+  }
+  return(outputstring);
+}
+
 mat readh5mat(H5File file,const H5std_string fieldname,size_t colchunk, size_t colchunksize, size_t rowchunk, size_t rowchunksize){
   //This function takes an OPEN hdf5 file, a field name, a start column and start row, and the address of an already allocated armadillo matrix and reads to the matrix
 
@@ -38,7 +105,6 @@ mat readh5mat(H5File file,const H5std_string fieldname,size_t colchunk, size_t c
     DataSet dataset = file.openDataSet(fieldname);
     DataSpace dataspace = dataset.getSpace();
     dataspace.getSimpleExtentDims(total_dims,NULL);
-    int changsize=0;
 
     if(colchunksize*colchunk+colchunksize>total_dims[0]){
       dims_out[1]=total_dims[0]-(colchunksize*colchunk);
@@ -127,6 +193,69 @@ vector<hsize_t> getdims(H5File file, H5std_string datasetname){
 
 
 
+vector<string> FindSubmatrix(H5File file, const H5std_string rowname, const H5std_string matname, const string rowlistfile, mat &intersectMat, size_t chunksize){
+
+
+  ifstream rowlist(rowlistfile);
+  vector<string> fileList;
+  copy(istream_iterator<string>(rowlist),
+       istream_iterator<string>(),
+       back_inserter(fileList));
+  sort(fileList.begin(),fileList.end());
+  
+  vector <hsize_t> h5dim(2);
+  h5dim = getdims(file,matname);
+  int rownum = h5dim[1];
+  
+  int chunks = ceil((double) h5dim[0]/(double) chunksize);
+  
+  vector<string> intersectList;
+  for(size_t i=0; i<chunks; i++){
+    vector<string> chunkList = readcharhdf5(file,rowname,i,chunksize);
+    unordered_map<string,int> chunkIndex;
+    pair<string,int> tempPair;
+    for(int j = 0; j!=chunkList.size(); j++){
+      tempPair = make_pair(chunkList[j],j);
+      chunkIndex.insert(tempPair);
+    }
+    sort(chunkList.begin(),chunkList.end());
+    
+    vector<string> namesIntersect(chunkList.end()-chunkList.begin());
+    vector<string>::iterator intersectIt = set_intersection(chunkList.begin(),chunkList.end(),fileList.begin(),fileList.end(),namesIntersect.begin());
+    namesIntersect.resize(intersectIt-namesIntersect.begin());
+    uvec intersectIndices(namesIntersect.size());
+    for(vector<string>::iterator it=namesIntersect.begin(); it !=namesIntersect.end(); ++it){
+      intersectIndices[it-namesIntersect.begin()]=chunkIndex[*it];
+    }
+    
+    sort(intersectIndices.begin(),intersectIndices.end());
+
+    if(namesIntersect.size()>0){
+      intersectList.insert( intersectList.end(), namesIntersect.begin(), namesIntersect.end() );
+
+      mat chunkMat = readh5mat(file,matname,i,chunkList.size(),0,rownum);
+
+
+
+      mat indexedChunkMat = chunkMat.cols(intersectIndices);
+
+      if(intersectMat.n_cols>0){
+
+       
+	intersectMat.insert_cols(intersectMat.n_cols,indexedChunkMat);
+
+      }
+      else{
+	intersectMat= indexedChunkMat;
+      }
+    }
+  }
+  
+  return(intersectList);
+}
+  
+
+
 int writemathdf5(H5File file, const H5std_string fieldname, mat &matrix){
   //This function takes an OPEN HDF5 file, a field, and the address of a prepopulated matrix and writes it to the opened file
 
@@ -172,56 +301,7 @@ int writemathdf5(H5File file, const H5std_string fieldname, mat &matrix){
 
 
   
-vector<string> readcharhdf5(H5File file,const H5std_string fieldname,size_t chunk, size_t chunksize){
 
-
-  hsize_t chunkstart = chunksize*chunk;
-  hsize_t rownamedims[1]={chunksize};
-  char ** temprownames;
-  temprownames = (char**) malloc(chunksize*sizeof(char*));
-  hsize_t dims_out[1]={chunksize};
-  hsize_t offset_h5[1]={chunkstart};
-  hsize_t offset_out[1]={0};
-  hsize_t dims_h5[1]={chunksize};
-  hid_t rowset,rowspace,memspace;
-  hid_t fstrtype;
-  herr_t status;
-
-  try{
-    
-    Exception::dontPrint();
-    StrType stringt(0,H5T_VARIABLE);
-    
-    DataSet dataset = file.openDataSet(fieldname);
-    DataSpace dataspace = dataset.getSpace();
-    dataspace.selectHyperslab(H5S_SELECT_SET,dims_h5,offset_h5);
-    DataSpace memspace(1,dims_h5,NULL);
-    memspace.selectHyperslab(H5S_SELECT_SET,dims_h5,offset_out);
-    dataset.read(temprownames,stringt,memspace,dataspace);
-  }
-  catch(FileIException error)
-    {
-      cerr<<"Error reading rownames: "<<fieldname<<endl;
-      error.printError();
-      throw(3);
-    }
-  catch (DataSetIException error)
-    {
-      cerr<<"Error reading rownames: "<<fieldname<<endl;
-      error.printError();
-      throw(3);
-
-    }
-  catch (DataSpaceIException error)
-    {
-      cerr<<"Error reading rownames: "<<fieldname<<endl;
-      error.printError();
-      throw(3);
-    }
-  vector<string> outputstring(temprownames,temprownames+chunksize); 
-  free(temprownames);
-  return(outputstring);
-}
 int writecharparamhd5(H5File file, const char* datasetnamei,const char* attributenamei, const string valuei){
   hsize_t dim[1]={1};
 
@@ -273,7 +353,7 @@ int writecharhdf5(H5File file,const H5std_string fieldname,const vector<string> 
   hid_t fstrtype;
   char** rawarray;
 
-  matnamedims[0]=matnames.size()-1;
+  matnamedims[0]=matnames.size();
   rawarray = (char**) malloc(matnames.size()*sizeof(char*));
 
   for(int i=0; i<matnames.size(); i++)
@@ -281,9 +361,11 @@ int writecharhdf5(H5File file,const H5std_string fieldname,const vector<string> 
       rawarray[i] = (char*)malloc(matnames[i].size()+1*sizeof(char));
       strcpy(rawarray[i],matnames[i].c_str());
     }
+  cout<<rawarray[matnames.size()-1]<<endl;
   
   try{
      Exception::dontPrint();
+     cout<<matnamedims<<endl;
     DataSpace dataspace(1,matnamedims);
     StrType stringt(PredType::C_S1,H5T_VARIABLE);
     
