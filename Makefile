@@ -1,7 +1,7 @@
 all: BeQ2L
 
 RMSE: computeRMSE.cpp matmethods.hpp h5objcpp.hpp
-	g++ -O0 -std=c++11 -g computeRMSE.cpp   -o RMSE  -I/usr/local/boost_1_47_0 -I/usr/include -I/opt/intel/composerxe-2011.5.220/mkl/include/ -L/opt/intel/composerxe-2011.5.220/mkl/lib/intel64/ -L/usr/local/lib -I/home/nwk2/include -L/home/nwk2/lib -L/home/nwk2/usr/lib64 -I/home/nwk2/usr/include -larmadillo -lhdf5_cpp -lhdf5_hl_cpp -lssl -lcrypto -lhdf5 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm
+	g++ -O3 -std=c++11 -g computeRMSE.cpp -fopenmp  -o RMSE  -I/apps/compilers/intel/2013/composer_xe_2013_sp1.1.106/mkl/include/ -I/home/t.cri.nknoblauch/include  -L/home/t.cri.nknoblauch/lib -L/home/t.cri.nknoblauch/lib64  -L/apps/compilers/intel/2013/composer_xe_2013_sp1.1.106/mkl/lib/intel64/  -larmadillo -lhdf5_cpp -lhdf5_hl_cpp -lssl -lcrypto -lhdf5 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm
 
 BeQ2L: main.cpp matmethods.hpp parameter_read.hpp importdata.hpp h5objcpp.hpp
 	icpc -std=c++11 -ipo -prof-gen -prof-dir=/home/nwk2/ -O3 -g main.cpp -o BeQ2L -I/usr/local/include -I/usr/local/boost_1_47_0 -I/usr/local/boost_1_47_0/boost -L/usr/local/lib  -larmadillo -lhdf5_cpp -lhdf5_hl_cpp -lssl -lcrypto -lhdf5 -lboost_timer

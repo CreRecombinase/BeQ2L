@@ -12,13 +12,13 @@ int main(int argc, char* argv[]){
   int chunkstart, chunknum,Achunksize,Bchunksize;
   int totalAchunks,totalBchunks,totalchunks;
   int kfold,bsi;
-  mkl_set_num_threads(1);
   int rownum;
   if(argc!=9){
     cerr<<"Usage:RMSE h5file chunkstart chunknum Achunksize Bchunksize bsi kfold outputfile"<<endl;
     cerr<<"argc: "<<argc<<endl;
     return(2);
   }
+  //  mkl_set_memory_limit(MKL_MEM_MCDRAM,12000);
   h5file = argv[1];
   chunkstart = atoi(argv[2]);
   chunknum = atoi(argv[3]);
@@ -67,7 +67,7 @@ int main(int argc, char* argv[]){
     mat A=readh5mat(file,Amatfield,Achunk,Achunksize,0,rownum);
     mat B=readh5mat(file,Bmatfield,Bchunk,Bchunksize,0,rownum);
     cout<<"Starting chunk: "<<i<<endl;
-    KfoldCV(A,B,kfold,i,bsi,outputfile,10);
+    KfoldCV(A,B,kfold,i,bsi,outputfile,bsi);
   }
   return(0);
 }

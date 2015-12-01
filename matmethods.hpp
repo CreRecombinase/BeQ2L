@@ -2,8 +2,6 @@
 #define MATMETHODS_HPP
 #include "mkl.h"
 #include "mkl_vsl.h"
-#include <boost/random/mersenne_twister.hpp>
-#include <boost/random/uniform_int_distribution.hpp>
 #include <algorithm>
 #include "armadillo"
 
@@ -38,6 +36,43 @@ void Mdim(const mat &cmat,const string matname){
   cout<<matname<<" has "<<cmat.n_rows<<"rows and "<<cmat.n_cols<<" cols"<<endl;
 }
 
+mat BootCorMedianNS(mat &A, mat &B,mat &C,umat &BootMat,int bsi){
+  
+  int status;
+  mat medians(A.n_cols,B.n_cols);
+  if(A.n_rows!=BootMat.n_cols){
+    cerr<<"Boot(incorrect indices):  A.n_rows= "<<A.n_rows<<" BM.n_cols= "<<BootMat.n_cols<<endl;
+    throw 15;
+  }
+  int n= bsi;
+
+
+  double params;
+
+  
+  cerr<<"Starting Bootstrap:"<<bsi<<endl;
+  //First iteration of bootstrap
+  mat tA(A.n_rows,A.n_cols);
+  mat tB(B.n_rows,B.n_cols);
+  mat tC(A.n_cols,B.n_cols);
+  for(int i=0; i<bsi; ++i){
+    tA = BootstrapSample(A,BootMat,i);
+    tB = BootstrapSample(B,BootMat,i);
+    
+    tC = CorMats(tA,tB);
+    C.col(i) = vectorise(tC,0);
+  }
+  medians = reshape(median(C,1),medians.n_rows,medians.n_cols);
+  
+  cerr<<"Bootstrap finished"<<endl;
+  return(medians);
+}
+
+
+
+
+
+
 mat BootCorMedian(mat &A, mat &B,cube &C,cube &quants,umat &BootMat,int bsi){
   
   int status;
@@ -49,16 +84,14 @@ mat BootCorMedian(mat &A, mat &B,cube &C,cube &quants,umat &BootMat,int bsi){
   int n= bsi;
   int samplenum = C.n_slices;
   VSLSSTaskPtr task;
-  MKL_INT q_order_n=2;
+  MKL_INT q_order_n=1;
   double q_order[q_order_n];
   double params;
   MKL_INT p,nparams,xstorage;
   p = C.n_rows*C.n_cols;
   xstorage = VSL_SS_MATRIX_STORAGE_COLS;
   params = 0.001;
-  nparams = VSL_SS_SQUANTS_ZW_PARAMS_N;
   q_order[0] = 0.5;
-  q_order[1] = 0.5+(double)(1)/((double)n);
   
   status = vsldSSNewTask(&task,&p,&samplenum,&xstorage,C.memptr(),0,NULL);
   status = vsldSSEditStreamQuantiles(task,&q_order_n,q_order,quants.memptr(),&nparams,&params);
@@ -76,7 +109,12 @@ mat BootCorMedian(mat &A, mat &B,cube &C,cube &quants,umat &BootMat,int bsi){
     C.slice(m) = CorMats(tA,tB);
     
     if(m==(C.n_slices-1)){
-      status = vsldSSCompute(task,VSL_SS_STREAM_QUANTS,VSL_SS_METHOD_SQUANTS_ZW_FAST);
+      try{
+	status = vsldSSCompute(task,VSL_SS_QUANTS,VSL_SS_METHOD_FAST);
+      }
+      catch(...){
+	cerr<<"Something happened with computing the quantiles"<<endl;
+      }
     }
   }
   samplenum=0;
@@ -144,8 +182,7 @@ void KfoldCV (const mat &A,const mat &B, const int kfold, const int chunknum, co
 
   cout<<"Initiating variables."<<endl;
   mat Point(A.n_cols,B.n_cols);
-  cube C(A.n_cols,B.n_cols,bsichunksize);
-  cube quants(2,C.n_rows,C.n_cols,fill::zeros);
+  mat C(A.n_cols*B.n_cols,bsi);
   cout<<"Generating Bootmat (Dimensions should be "<<bsi<<"x"<<traini.n_elem<<")"<<endl;
   umat BootMat = GenBoot(traini.n_elem,bsi);
   cout<<"Starting kfold: 0"<<endl;
@@ -166,7 +203,7 @@ void KfoldCV (const mat &A,const mat &B, const int kfold, const int chunknum, co
 
     Point = CorMats(trainA,trainB);
  
-    MedianMat = BootCorMedian(trainA,trainB,C,quants,BootMat,bsi);
+    MedianMat = BootCorMedianNS(trainA,trainB,C,BootMat,bsi);
    
     BootMAD=BootMAD+CVCorMAD(MedianMat,testA,testB);
    
